@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>MedBand Pro Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <!-- EmailJS -->
+  <script src="https://cdn.jsdelivr.net/npm/emailjs-com@3/dist/email.min.js"></script>
+
+  <script>
+  (function(){
+    emailjs.init("v7HcuD5eCKhhNb-14");
+  })();
+  </script>
+
+  <style>
+    body {
+      font-family: 'Segoe UI';
+      margin: 0;
+      background: #eef2f7;
+    }
+
+    .header {
+      background: linear-gradient(90deg, #0d47a1, #1976d2);
+      color: white;
+      text-align: center;
+      padding: 14px;
+      font-size: 20px;
+      font-weight: bold;
+    }
+
+    .top-btn {
+      position: absolute;
+      top: 10px;
+      right: 15px;
+    }
+
+    .download-btn {
+      padding: 10px 15px;
+      border: none;
+      border-radius: 8px;
+      background: #1976d2;
+      color: white;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    .status-bar {
+      text-align: center;
+      padding: 10px;
+      font-weight: bold;
+      font-size: 14px;
+    }
+
+    .status-normal {
+      background: #e8f5e9;
+      color: green;
+    }
+
+    .status-danger {
+      background: #ffebee;
+      color: red;
+    }
+
+    .container {
+      display: flex;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 15px;
+      padding: 15px;
+    }
+
+    .card {
+      background: white;
+      padding: 15px;
+      border-radius: 12px;
+      width: 210px;
+      text-align: center;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+    }
+
+    .value {
+      font-size: 28px;
+      font-weight: bold;
+    }
+
+    .status {
+      font-size: 13px;
+      margin-top: 5px;
+    }
+
+    .chart-grid {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+      padding: 15px;
+    }
+
+    .chart-box {
+      background: white;
+      padding: 12px;
+      border-radius: 12px;
+      width: 600px;
+      height: 340px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+    }
+
+    canvas {
+      width: 100% !important;
+      height: 100% !important;
+    }
+
+    .doctor {
+      text-align: center;
+      font-weight: bold;
+      margin: 8px;
+      font-size: 15px;
+    }
+  </style>
+</head>
+
+<body>
+
+<div class="header">🩺 MedBand - Real-Time Health Monitor</div>
+
+<div class="top-btn">
+  <button class="download-btn" onclick="downloadData()">📥 Download Data</button>
+</div>
+
+<div id="statusBar" class="status-bar">Loading...</div>
+<div id="doctorMsg" class="doctor"></div>
+
+<div class="container">
+  <div class="card">
+    <h3>❤️ BPM</h3>
+    <div id="bpm" class="value">--</div>
+    <div id="bpmStatus" class="status"></div>
+  </div>
+
+  <div class="card">
+    <h3>🌡️ Temp</h3>
+    <div id="temp" class="value">--</div>
+    <div id="tempStatus" class="status"></div>
+  </div>
+
+  <div class="card">
+    <h3>🫁 SpO₂</h3>
+    <div id="spo2" class="value">--</div>
+    <div id="spo2Status" class="status"></div>
+  </div>
+</div>
+
+<div class="chart-grid">
+  <div class="chart-box">
+    <h4 style="text-align:center;">Heart Rate Trend</h4>
+    <canvas id="bpmChart"></canvas>
+  </div>
+
+  <div class="chart-box">
+    <h4 style="text-align:center;">Temperature Trend</h4>
+    <canvas id="tempChart"></canvas>
+  </div>
+
+  <div class="chart-box">
+    <h4 style="text-align:center;">SpO₂ Trend</h4>
+    <canvas id="spo2Chart"></canvas>
+  </div>
+</div>
+
+<script>
+const channelID = 3321148;
+
+let bpmData = [], tempData = [], spo2Data = [], labels = [];
+let alertSent = false;
+
+// Charts
+const bpmChart = new Chart(document.getElementById("bpmChart"), {
+  type: "line",
+  data: { labels, datasets: [{ label: "BPM", data: bpmData, borderColor: "blue", fill: true }] },
+  options: { maintainAspectRatio: false, scales: { y: { min: 0, max: 120 } } }
+});
+
+const tempChart = new Chart(document.getElementById("tempChart"), {
+  type: "line",
+  data: { labels, datasets: [{ label: "Temp", data: tempData, borderColor: "red", fill: true }] },
+  options: { maintainAspectRatio: false, scales: { y: { min: 0, max: 40 } } }
+});
+
+const spo2Chart = new Chart(document.getElementById("spo2Chart"), {
+  type: "line",
+  data: { labels, datasets: [{ label: "SpO₂", data: spo2Data, borderColor: "green", fill: true }] },
+  options: { maintainAspectRatio: false, scales: { y: { min: 0, max: 100 } } }
+});
+
+// Download
+function downloadData() {
+  const url = `https://api.thingspeak.com/channels/${channelID}/feeds.csv?results=50`;
+  let link = document.createElement("a");
+  link.href = url;
+  link.download = "medband_data.csv";
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+// Email function
+function sendEmailAlert(bpm, spo2, condition) {
+  emailjs.send("service_aw44zix", "template_ndsb04g", {
+    bpm: bpm,
+    spo2: spo2,
+    condition: condition
+  });
+}
+
+// Fetch data
+async function getData() {
+  let res = await fetch(`https://api.thingspeak.com/channels/${channelID}/feeds/last.json`);
+  let data = await res.json();
+
+  let bpm = parseInt(data.field2);
+  let temp = parseFloat(data.field1);
+  let spo2 = parseInt(data.field3);
+
+  document.getElementById("bpm").innerText = bpm + " BPM";
+  document.getElementById("temp").innerText = temp + " °C";
+  document.getElementById("spo2").innerText = spo2 + " %";
+
+  let isDanger = false;
+
+  // Status
+  if (bpm < 60 || bpm > 100) {
+    isDanger = true;
+    document.getElementById("bpmStatus").innerText = "Abnormal";
+    document.getElementById("bpmStatus").style.color = "red";
+  } else {
+    document.getElementById("bpmStatus").innerText = "Normal";
+    document.getElementById("bpmStatus").style.color = "green";
+  }
+
+  if (temp >= 37) {
+    isDanger = true;
+    document.getElementById("tempStatus").innerText = "Fever";
+    document.getElementById("tempStatus").style.color = "red";
+  } else {
+    document.getElementById("tempStatus").innerText = "Normal";
+    document.getElementById("tempStatus").style.color = "green";
+  }
+
+  if (spo2 < 95) {
+    isDanger = true;
+    document.getElementById("spo2Status").innerText = "Low";
+    document.getElementById("spo2Status").style.color = "red";
+  } else {
+    document.getElementById("spo2Status").innerText = "Normal";
+    document.getElementById("spo2Status").style.color = "green";
+  }
+
+  // Disease Detection
+  let disease = "";
+
+  if (bpm == 0 && spo2 == 0) {
+    disease = "❌ No Finger Detected";
+  }
+  else if (temp >= 37 && spo2 < 95) {
+    disease = "⚠️ Respiratory Infection";
+  }
+  else if (temp >= 37) {
+    disease = "🤒 Fever";
+  }
+  else if (bpm > 100) {
+    disease = "💓 Tachycardia";
+  }
+  else if (bpm < 60) {
+    disease = "💙 Bradycardia";
+  }
+  else if (spo2 < 95) {
+    disease = "🫁 Hypoxia";
+  }
+  else {
+    disease = "✅ Normal";
+  }
+
+  document.getElementById("doctorMsg").innerText = disease;
+
+  // Email alert
+  if (isDanger && !alertSent) {
+    sendEmailAlert(bpm, spo2, disease);
+    document.getElementById("doctorMsg").innerText += " | 📧 Email Sent";
+    alertSent = true;
+  }
+
+  if (!isDanger) {
+    alertSent = false;
+  }
+
+  let time = new Date().toLocaleTimeString();
+
+  labels.push(time);
+  bpmData.push(bpm);
+  tempData.push(temp);
+  spo2Data.push(spo2);
+
+  if (labels.length > 10) {
+    labels.shift();
+    bpmData.shift();
+    tempData.shift();
+    spo2Data.shift();
+  }
+
+  bpmChart.update();
+  tempChart.update();
+  spo2Chart.update();
+}
+
+setInterval(getData, 5000);
+</script>
+
+</body>
+</html>
